@@ -1,0 +1,190 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Rol {
+  id          Int       @id @default(autoincrement()) @map("id_rol")
+  nombre      String    @unique(map: "uq_roles_nombre") @db.VarChar(100)
+  activo      Boolean   @default(true)
+  descripcion String?   @db.VarChar(255)
+  usuarios    Usuario[]
+  permisos RolesPermisos[]
+
+  @@map("roles")
+}
+
+model Usuario {
+  id                 Int         @id @default(autoincrement()) @map("id_usuario")
+  nombre             String      @db.VarChar(100)
+  apellidoPaterno    String      @map("apellido_paterno") @db.VarChar(100)
+  apellidoMaterno    String?     @map("apellido_materno") @db.VarChar(100)
+  usuario            String      @unique @db.VarChar(100)
+  contrasena         String      @db.VarChar(255)
+  activo             Boolean     @default(true)
+  rolId              Int         @map("id_rol")
+  fechaCreacion      DateTime    @default(now()) @map("fecha_creacion") @db.Timestamp(6)
+  ultimoAcceso       DateTime?   @map("ultimo_acceso") @db.Timestamp(6)
+  correo             String?     @unique @db.VarChar(150)
+  fechaActualizacion DateTime?   @updatedAt @map("fecha_actualizacion") @db.Timestamp(6)
+  auditorias         Auditoria[]
+  entradas           Entrada[]
+  salidas            Salida[]
+  rol                Rol         @relation(fields: [rolId], references: [id], map: "fk_usuario_rol")
+
+  @@map("usuarios")
+}
+
+model Categoria {
+  id        Int        @id @default(autoincrement()) @map("id_categoria")
+  nombre    String     @unique @db.VarChar(100)
+  activo    Boolean    @default(true)
+  productos Producto[]
+
+  @@map("categorias")
+}
+
+model Producto {
+  id          Int       @id @default(autoincrement()) @map("id_producto")
+  codigo      String    @unique @db.VarChar(100)
+  nombre      String    @db.VarChar(200)
+  descripcion String?
+  stockActual Decimal   @default(0) @map("stock_actual") @db.Decimal(12, 2)
+  stockMinimo Decimal   @default(0) @map("stock_minimo") @db.Decimal(12, 2)
+  activo      Boolean   @default(true)
+  categoriaId Int       @map("id_categoria")
+  lotes       Lote[]
+  categoria   Categoria @relation(fields: [categoriaId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("productos")
+}
+
+model Lote {
+  id                 Int       @id @default(autoincrement()) @map("id_lote")
+  numeroLote         String    @map("numero_lote") @db.VarChar(100)
+  fechaCaducidad     DateTime  @map("fecha_caducidad") @db.Date
+  cantidadDisponible Decimal   @default(0) @map("cantidad_disponible") @db.Decimal(12, 2)
+  fechaRegistro      DateTime  @default(now()) @map("fecha_registro") @db.Timestamp(6)
+  activo             Boolean   @default(true)
+  productoId         Int       @map("id_producto")
+
+  producto  Producto  @relation(fields: [productoId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  entradas  Entrada[]
+  salidas   Salida[]
+
+  @@unique([productoId, numeroLote], map: "uq_producto_lote")
+
+  @@map("lotes")
+}
+
+model Motivo {
+  id       Int       @id @default(autoincrement()) @map("id_motivo")
+  tipo     String?   @db.VarChar(50)
+  nombre   String    @unique @db.VarChar(100)
+  activo   Boolean   @default(true)
+  entradas Entrada[]
+  salidas  Salida[]
+
+  @@map("motivos")
+}
+
+model Entrada {
+  id            Int      @id @default(autoincrement()) @map("id_entrada")
+  fechaEntrada  DateTime @default(now()) @map("fecha_entrada") @db.Timestamp(6)
+  cantidad      Decimal  @db.Decimal(12, 2)
+  observaciones String?
+  motivoId      Int      @map("id_motivo")
+  usuarioId     Int      @map("id_usuario")
+  loteId        Int      @map("id_lote")
+  lote          Lote     @relation(fields: [loteId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  motivo        Motivo   @relation(fields: [motivoId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  usuario       Usuario  @relation(fields: [usuarioId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("entradas")
+}
+
+model Salida {
+  id            Int      @id @default(autoincrement()) @map("id_salida")
+  fechaSalida   DateTime @default(now()) @map("fecha_salida") @db.Timestamp(6)
+  cantidad      Decimal  @db.Decimal(12, 2)
+  observaciones String?
+  loteId        Int      @map("id_lote")
+  usuarioId     Int      @map("id_usuario")
+  motivoId      Int      @map("id_motivo")
+  lote          Lote     @relation(fields: [loteId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  motivo        Motivo   @relation(fields: [motivoId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  usuario       Usuario  @relation(fields: [usuarioId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("salidas")
+}
+
+model Auditoria {
+  id              Int      @id @default(autoincrement()) @map("id_auditoria")
+  tabla           String   @db.VarChar(100)
+  accion          String   @db.VarChar(20)
+  idRegistro      Int?     @map("id_registro")
+  descripcion     String?
+  datosAnteriores Json?    @map("datos_anteriores")
+  datosNuevos     Json?    @map("datos_nuevos")
+  ip              String?  @db.VarChar(45)
+  fecha           DateTime @default(now()) @db.Timestamp(6)
+  endpoint        String? @db.VarChar(255)
+
+  usuarioId       Int      @map("id_usuario")
+  modulo          String   @default("General") @db.VarChar(100)
+  usuario         Usuario  @relation(fields: [usuarioId], references: [id], map: "fk_auditoria_usuario")
+
+  @@index([accion], map: "idx_auditoria_accion")
+  @@index([fecha], map: "idx_auditoria_fecha")
+  @@index([tabla], map: "idx_auditoria_tabla")
+  @@index([usuarioId], map: "idx_auditoria_usuario")
+  @@map("auditoria")
+}
+
+enum accion_auditoria {
+  INSERT
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+}
+
+model Permiso {
+
+  id          Int      @id @default(autoincrement()) @map("id_permiso")
+
+  modulo      String   @db.VarChar(100)
+
+  codigo      String   @unique @db.VarChar(100)
+
+  nombre      String   @db.VarChar(150)
+
+  descripcion String?  @db.VarChar(255)
+
+  activo      Boolean  @default(true)
+
+  roles RolesPermisos[]
+
+  @@index([codigo])
+  
+  @@map("permisos")
+}
+
+model RolesPermisos {
+
+  rolId      Int @map("id_rol")
+
+  permisoId  Int @map("id_permiso")
+
+  rol         Rol      @relation(fields: [rolId], references: [id])
+
+  permiso     Permiso  @relation(fields: [permisoId], references: [id])
+
+  @@id([rolId, permisoId])
+
+  @@map("roles_permisos")
+}
