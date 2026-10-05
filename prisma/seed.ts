@@ -228,6 +228,11 @@ for (const categoria of categorias) {
         nombre: "Editar lotes",
         descripcion: "Modificar lotes"
     },
+    { 
+        modulo: "Lotes", 
+        codigo: "LOTE_DESACTIVAR", 
+        nombre: "Activar/Desactivar lotes", 
+        descripcion: "Cambiar estado del lote" },
 
     // Entradas
     {
