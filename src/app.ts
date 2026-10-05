@@ -9,6 +9,7 @@ import permissionRoutes from "./routes/permission.routes";
 import loteRoutes from "./routes/lote.route";
 import auditoriaRoutes from "./routes/auditoria.routes";
 import entradaRoutes from "./routes/entrada.routes";
+import salidaRoutes from "./routes/salidas.routes";
 
 const app = express();
 
@@ -25,7 +26,7 @@ app.use("/api/permisos", permissionRoutes);
 app.use("/api/lotes", loteRoutes);
 app.use("/api/auditorias", auditoriaRoutes);
 app.use("/api/entradas", entradaRoutes);
-
+app.use("/api/salidas", salidaRoutes);
 
 
 export default app;
