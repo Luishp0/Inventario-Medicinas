@@ -7,7 +7,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "nodemon --exec ts-node src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "db:seed": "prisma db seed"
   },
   "keywords": [],
   "author": "",
@@ -30,6 +31,7 @@
     "@types/node": "^26.1.1",
     "nodemon": "^3.1.14",
     "ts-node": "^10.9.2",
+    "tsx": "^4.23.15",
     "typescript": "5.9"
   },
   "prisma": {
