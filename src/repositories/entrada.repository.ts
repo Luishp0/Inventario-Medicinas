@@ -1,4 +1,4 @@
-
+import { Prisma } from "@prisma/client";
 import { prisma } from "../config/prisma";
 
 interface CrearEntradaData {
@@ -11,10 +11,17 @@ interface CrearEntradaData {
 }
 
 export class EntradaRepository {
-    async crear(data: CrearEntradaData) {
-        return prisma.$transaction(async (tx) => {
 
-            // 1. Buscar el lote y verificar que esté activo
+    // =========================================================
+    // CREAR ENTRADA
+    // =========================================================
+    async crear(data: CrearEntradaData) {
+
+        return await prisma.$transaction(async (tx) => {
+
+            // -------------------------------------------------
+            // Verificar lote
+            // -------------------------------------------------
             const lote = await tx.lote.findUnique({
                 where: {
                     id: data.loteId,
@@ -25,18 +32,20 @@ export class EntradaRepository {
             });
 
             if (!lote) {
-                throw new Error("El lote seleccionado no existe");
+                throw new Error("El lote no existe.");
             }
 
             if (!lote.activo) {
-                throw new Error("El lote seleccionado está inactivo");
+                throw new Error("El lote está inactivo.");
             }
 
             if (!lote.producto.activo) {
-                throw new Error("El producto asociado al lote está inactivo");
+                throw new Error("El producto asociado al lote está inactivo.");
             }
 
-            // 2. Verificar que el motivo exista y esté activo
+            // -------------------------------------------------
+            // Verificar motivo
+            // -------------------------------------------------
             const motivo = await tx.motivo.findUnique({
                 where: {
                     id: data.motivoId,
@@ -44,56 +53,64 @@ export class EntradaRepository {
             });
 
             if (!motivo) {
-                throw new Error("El motivo seleccionado no existe");
+                throw new Error("El motivo no existe.");
             }
 
             if (!motivo.activo) {
-                throw new Error("El motivo seleccionado está inactivo");
+                throw new Error("El motivo está inactivo.");
             }
 
             if (motivo.tipo !== "ENTRADA") {
-                throw new Error("El motivo seleccionado no corresponde a una entrada");
+                throw new Error(
+                    "El motivo seleccionado no corresponde a una entrada."
+                );
             }
 
-            // 3. Registrar la entrada
+            // -------------------------------------------------
+            // Crear entrada
+            // -------------------------------------------------
             const entrada = await tx.entrada.create({
                 data: {
-                    cantidad: data.cantidad,
+                    cantidad: new Prisma.Decimal(data.cantidad),
                     observaciones: data.observaciones ?? null,
                     motivoId: data.motivoId,
                     usuarioId: data.usuarioId,
                     loteId: data.loteId,
-                    ...(data.fechaEntrada && {
-                        fechaEntrada: data.fechaEntrada,
-                    }),
+                    fechaEntrada: data.fechaEntrada ?? new Date(),
                 },
             });
 
-            // 4. Incrementar las existencias del lote
+            // -------------------------------------------------
+            // Actualizar existencia del lote
+            // -------------------------------------------------
             await tx.lote.update({
                 where: {
                     id: data.loteId,
                 },
                 data: {
                     cantidadDisponible: {
-                        increment: data.cantidad,
+                        increment: new Prisma.Decimal(data.cantidad),
                     },
                 },
             });
 
-            // 5. Incrementar las existencias generales del producto
+            // -------------------------------------------------
+            // Actualizar stock del producto
+            // -------------------------------------------------
             await tx.producto.update({
                 where: {
                     id: lote.productoId,
                 },
                 data: {
                     stockActual: {
-                        increment: data.cantidad,
+                        increment: new Prisma.Decimal(data.cantidad),
                     },
                 },
             });
 
-            // 6. Consultar nuevamente la entrada con las existencias actualizadas
+            // -------------------------------------------------
+            // Obtener entrada actualizada con relaciones
+            // -------------------------------------------------
             const entradaActualizada = await tx.entrada.findUnique({
                 where: {
                     id: entrada.id,
@@ -118,10 +135,177 @@ export class EntradaRepository {
             });
 
             if (!entradaActualizada) {
-                throw new Error("No se pudo recuperar la entrada registrada");
+                throw new Error(
+                    "No se pudo recuperar la entrada después de crearla."
+                );
             }
 
             return entradaActualizada;
         });
+    }
+
+    // =========================================================
+    // LISTAR ENTRADAS
+    // =========================================================
+    async listar(params: {
+        page: number;
+        limit: number;
+        motivoId?: number;
+        loteId?: number;
+        usuarioId?: number;
+        fechaDesde?: Date;
+        fechaHasta?: Date;
+        buscar?: string;
+    }) {
+
+        const {
+            page,
+            limit,
+            motivoId,
+            loteId,
+            usuarioId,
+            fechaDesde,
+            fechaHasta,
+            buscar,
+        } = params;
+
+        // -------------------------------------------------
+        // Paginación
+        // -------------------------------------------------
+        const skip = (page - 1) * limit;
+
+        // -------------------------------------------------
+        // Construcción dinámica de filtros
+        // -------------------------------------------------
+        const where: any = {};
+
+        // Filtrar por motivo
+        if (motivoId !== undefined) {
+            where.motivoId = motivoId;
+        }
+
+        // Filtrar por lote
+        if (loteId !== undefined) {
+            where.loteId = loteId;
+        }
+
+        // Filtrar por usuario
+        if (usuarioId !== undefined) {
+            where.usuarioId = usuarioId;
+        }
+
+        // Filtrar por rango de fechas
+        if (fechaDesde || fechaHasta) {
+
+            where.fechaEntrada = {};
+
+            if (fechaDesde) {
+                where.fechaEntrada.gte = fechaDesde;
+            }
+
+            if (fechaHasta) {
+                where.fechaEntrada.lte = fechaHasta;
+            }
+        }
+
+        // -------------------------------------------------
+        // Búsqueda
+        // Lote
+        // Nombre del producto
+        // Código del producto
+        // -------------------------------------------------
+        if (buscar && buscar.trim() !== "") {
+
+            const texto = buscar.trim();
+
+            where.OR = [
+                {
+                    lote: {
+                        numeroLote: {
+                            contains: texto,
+                            mode: "insensitive",
+                        },
+                    },
+                },
+                {
+                    lote: {
+                        producto: {
+                            nombre: {
+                                contains: texto,
+                                mode: "insensitive",
+                            },
+                        },
+                    },
+                },
+                {
+                    lote: {
+                        producto: {
+                            codigo: {
+                                contains: texto,
+                                mode: "insensitive",
+                            },
+                        },
+                    },
+                },
+            ];
+        }
+
+        // -------------------------------------------------
+        // Obtener datos y total
+        // -------------------------------------------------
+        const [entradas, total] = await prisma.$transaction([
+            prisma.entrada.findMany({
+                where,
+                skip,
+                take: limit,
+
+                orderBy: {
+                    fechaEntrada: "desc",
+                },
+
+                include: {
+                    lote: {
+                        include: {
+                            producto: true,
+                        },
+                    },
+
+                    motivo: true,
+
+                    usuario: {
+                        select: {
+                            id: true,
+                            nombre: true,
+                            apellidoPaterno: true,
+                            apellidoMaterno: true,
+                            usuario: true,
+                        },
+                    },
+                },
+            }),
+
+            prisma.entrada.count({
+                where,
+            }),
+        ]);
+
+        // -------------------------------------------------
+        // Calcular total de páginas
+        // -------------------------------------------------
+        const totalPaginas = Math.ceil(total / limit);
+
+        // -------------------------------------------------
+        // Respuesta
+        // -------------------------------------------------
+        return {
+            datos: entradas,
+
+            paginacion: {
+                pagina: page,
+                limite: limit,
+                total,
+                totalPaginas,
+            },
+        };
     }
 }
